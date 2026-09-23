@@ -13,6 +13,7 @@
     --text: #e8edf3;
     --muted: #8593a3;
     --accent: #4fc3f7;
+    --accent2: #f0b35a;
     --ok: #66d19e;
     --warn: #f0b35a;
     --err: #ef6f6f;
@@ -20,9 +21,9 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; gap: 12px;
+  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; gap: 10px;
     padding: calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-right, 0px) + 16px)
-             calc(env(safe-area-inset-bottom, 0px) + 12px) calc(env(safe-area-inset-left, 0px) + 16px); }
+             calc(env(safe-area-inset-bottom, 0px) + 10px) calc(env(safe-area-inset-left, 0px) + 16px); }
 
   header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   header h1 { font-size: 18px; margin: 0; letter-spacing: .02em; }
@@ -34,32 +35,81 @@
   button.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
   button:disabled { opacity: .5; }
 
-  main { flex: 1; display: grid; gap: 10px;
-    grid-template-columns: 1fr 1fr; grid-template-rows: 1.6fr 1fr 1fr 1fr; min-height: 0; }
+  /* Horizontal pager: one view per screen width, swipe to switch. */
+  .views { flex: 1; min-height: 0; display: flex; overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
+    gap: 16px; }
+  .views::-webkit-scrollbar { display: none; }
+  .view { flex: 0 0 100%; min-width: 0; min-height: 0; scroll-snap-align: start; scroll-snap-stop: always;
+    display: grid; gap: 10px; }
+
+  .tabs { display: flex; justify-content: center; gap: 4px; }
+  .tabs button { background: transparent; color: var(--muted); border: 1px solid var(--line);
+    padding: 5px 10px; font-size: 12px; border-radius: 999px; white-space: nowrap; }
+  .tabs button.active { background: var(--panel); color: var(--text); border-color: var(--muted); }
+
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
     padding: 8px 14px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .tile .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  .tile .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* The value box fills whatever space the tile has left; the number scales to fit that box. */
   .tile .value { flex: 1; min-height: 0; container-type: size; display: flex; align-items: center; }
   .tile .value span { font-variant-numeric: tabular-nums; font-weight: 700; line-height: 1;
     white-space: nowrap; font-size: min(85cqh, 26cqw); }
-  .tile .unit { color: var(--muted); font-size: 14px; }
-  .tile.hero { grid-column: 1 / -1; }
+  .tile .unit, .tile .sub { color: var(--muted); font-size: 14px; }
   .tile.hero .value span { font-size: min(90cqh, 33cqw); color: var(--accent); }
-  .tile.hero .sub { color: var(--muted); font-size: 15px; }
+  .tile.mini { padding: 6px 12px; }
+  .tile.mini .label { font-size: 11px; }
 
-  /* Phone on its side: split on the left, the other six in a 3×2 grid on the right. */
+  .chart { flex: 1; min-height: 0; position: relative; margin-top: 4px; }
+  .chart canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 3px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+
+  /* --- View 1: dashboard --- */
+  .v-dash { grid-template-columns: 1fr 1fr; grid-template-rows: 1.6fr 1fr 1fr 1fr; }
+  .v-dash .hero { grid-column: 1 / -1; }
+
+  /* --- View 2: trends --- */
+  .v-trend { grid-template-columns: repeat(3, 1fr); grid-template-rows: 0.55fr 1.4fr 1fr; }
+  .v-trend .wide { grid-column: 1 / -1; }
+
+  /* --- View 3: force curve --- */
+  .v-force { grid-template-columns: 1fr 1fr; grid-template-rows: 2.4fr 0.6fr 0.6fr; }
+  .v-force .wide { grid-column: 1 / -1; }
+
+  /* --- View 4: rhythm --- */
+  .v-rhythm { grid-template-columns: 1fr 1fr; grid-template-rows: 1.2fr 1.3fr 0.6fr 0.6fr; }
+  .v-rhythm .wide { grid-column: 1 / -1; }
+  .ratio-bar { height: 14px; border-radius: 7px; background: #2a3441; position: relative; overflow: hidden; margin: 4px 0 6px; }
+  .ratio-bar .drive { position: absolute; inset: 0 auto 0 0; background: var(--accent); width: 33%; transition: width .3s; }
+  .ratio-bar .target { position: absolute; top: 0; bottom: 0; left: 33.3%; width: 2px; background: var(--text); opacity: .7; }
+  .coach { font-size: 14px; color: var(--muted); min-height: 1.2em; }
+
+  /* Phone on its side. */
   @media (orientation: landscape) {
     body { gap: 8px; padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
-      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); }
-    main { gap: 8px; grid-template-columns: 1.5fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
-    .tile.hero { grid-column: 1; grid-row: 1 / -1; }
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); }
+    .view { gap: 8px; }
     .tile .label { font-size: 12px; }
     .tile .unit { display: none; }
+    .v-dash { grid-template-columns: 1.5fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .v-dash .hero { grid-column: 1; grid-row: 1 / -1; }
+    .v-trend { grid-template-columns: 0.7fr 2fr 2fr; grid-template-rows: 1fr 1fr 1fr; }
+    .v-trend .mini { grid-column: 1; }
+    .v-trend .wide { grid-row: 1 / -1; }
+    .v-trend > :nth-child(4) { grid-column: 2; }
+    .v-trend > :nth-child(5) { grid-column: 3; }
+    .v-force { grid-template-columns: 2.4fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .v-force .wide { grid-column: 1; grid-row: 1 / -1; }
+    .v-rhythm { grid-template-columns: 1.2fr 1.6fr 0.8fr 0.8fr; grid-template-rows: 1fr 1fr; }
+    .v-rhythm .ratio { grid-column: 1; grid-row: 1 / -1; }
+    .v-rhythm .strokes { grid-column: 2; grid-row: 1 / -1; }
   }
   @media (orientation: landscape) and (max-height: 500px) {
     header h1 { font-size: 16px; }
-    button { padding: 6px 12px; font-size: 14px; }
+    header button { padding: 6px 12px; font-size: 14px; }
+    .tabs button { padding: 3px 10px; font-size: 12px; }
     .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
   }
 
@@ -75,43 +125,97 @@
   <button id="demoBtn" class="secondary">Demo</button>
 </header>
 
-<main>
-  <div class="tile hero">
-    <div class="label">Split /500m</div>
-    <div class="value"><span id="pace">–:––</span></div>
-    <div class="sub">gem. <span id="avgPace">–:––</span></div>
-  </div>
-  <div class="tile"><div class="label">Slagen/min</div><div class="value"><span id="spm">–</span></div></div>
-  <div class="tile"><div class="label">Watt</div><div class="value"><span id="watts">–</span></div></div>
-  <div class="tile"><div class="label">Afstand</div><div class="value"><span id="dist">–</span></div><div class="unit">meter</div></div>
-  <div class="tile"><div class="label">Tijd</div><div class="value"><span id="time">–:––</span></div></div>
-  <div class="tile"><div class="label">Calorieën</div><div class="value"><span id="cal">–</span></div></div>
-  <div class="tile"><div class="label">Hartslag</div><div class="value"><span id="hr">–</span></div><div class="unit">bpm</div></div>
-</main>
+<div class="views" id="views">
+  <!-- 1. Dashboard -->
+  <section class="view v-dash" data-name="Dashboard">
+    <div class="tile hero">
+      <div class="label">Split /500m</div>
+      <div class="value"><span id="pace">–:––</span></div>
+      <div class="sub">gem. <span id="avgPace">–:––</span></div>
+    </div>
+    <div class="tile"><div class="label">Slagen/min</div><div class="value"><span id="spm">–</span></div></div>
+    <div class="tile"><div class="label">Watt</div><div class="value"><span id="watts">–</span></div></div>
+    <div class="tile"><div class="label">Afstand</div><div class="value"><span id="dist">–</span></div><div class="unit">meter</div></div>
+    <div class="tile"><div class="label">Tijd</div><div class="value"><span id="time">–:––</span></div></div>
+    <div class="tile"><div class="label">Calorieën</div><div class="value"><span id="cal">–</span></div></div>
+    <div class="tile"><div class="label">Hartslag</div><div class="value"><span id="hr">–</span></div><div class="unit">bpm</div></div>
+  </section>
 
-<div class="hint" id="hint">Zet de PM5 aan, open op de PM5 het menu <b>Connect</b>, en tik hierboven op “Verbind PM5”.</div>
+  <!-- 2. Trends over the last minutes -->
+  <section class="view v-trend" data-name="Verloop">
+    <div class="tile mini"><div class="label">Split</div><div class="value"><span id="tPace">–:––</span></div></div>
+    <div class="tile mini"><div class="label">Slagen/min</div><div class="value"><span id="tSpm">–</span></div></div>
+    <div class="tile mini"><div class="label">Watt</div><div class="value"><span id="tWatts">–</span></div></div>
+    <div class="tile wide">
+      <div class="label">Split – laatste 5 min</div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>split</span><span><i style="background:var(--muted)"></i>gemiddelde</span></div>
+      <div class="chart"><canvas id="paceChart"></canvas></div>
+    </div>
+    <div class="tile wide">
+      <div class="label">Watt &amp; slagfrequentie</div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>watt</span><span><i style="background:var(--accent2)"></i>slagen/min</span></div>
+      <div class="chart"><canvas id="powerChart"></canvas></div>
+    </div>
+  </section>
+
+  <!-- 3. Force curve -->
+  <section class="view v-force" data-name="Krachtcurve">
+    <div class="tile wide">
+      <div class="label">Krachtcurve – laatste 8 halen</div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>laatste haal</span><span><i style="background:#4fc3f755"></i>eerdere halen</span></div>
+      <div class="chart"><canvas id="forceChart"></canvas></div>
+    </div>
+    <div class="tile mini"><div class="label">Piekkracht (N)</div><div class="value"><span id="fPeak">–</span></div></div>
+    <div class="tile mini"><div class="label">Gem. kracht (N)</div><div class="value"><span id="fAvg">–</span></div></div>
+    <div class="tile mini"><div class="label">Piek op % haal</div><div class="value"><span id="fPos">–</span></div></div>
+    <div class="tile mini"><div class="label">Consistentie</div><div class="value"><span id="fCons">–</span></div></div>
+  </section>
+
+  <!-- 4. Rhythm: drive vs recovery -->
+  <section class="view v-rhythm" data-name="Ritme">
+    <div class="tile wide ratio">
+      <div class="label">Haal : terugweg</div>
+      <div class="value"><span id="rRatio">– : –</span></div>
+      <div class="ratio-bar"><div class="drive" id="rBar"></div><div class="target" title="1 : 2"></div></div>
+      <div class="coach" id="rCoach">Streef naar ongeveer 1 : 2 – snel trekken, rustig terug.</div>
+    </div>
+    <div class="tile wide strokes">
+      <div class="label">Laatste 30 slagen</div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>haal</span><span><i style="background:#3a4757"></i>terugweg</span></div>
+      <div class="chart"><canvas id="rhythmChart"></canvas></div>
+    </div>
+    <div class="tile mini"><div class="label">Meter/slag</div><div class="value"><span id="rDps">–</span></div></div>
+    <div class="tile mini"><div class="label">Haallengte (m)</div><div class="value"><span id="rLen">–</span></div></div>
+    <div class="tile mini"><div class="label">Haaltijd (s)</div><div class="value"><span id="rDrive">–</span></div></div>
+    <div class="tile mini"><div class="label">Terugweg (s)</div><div class="value"><span id="rRec">–</span></div></div>
+  </section>
+</div>
+
+<nav class="tabs" id="tabs"></nav>
+<div class="hint" id="hint">Zet de PM5 aan, open op de PM5 het menu <b>Connect</b>, en tik hierboven op “Verbind PM5”. Swipe voor andere weergaven.</div>
 
 <script>
 // Concept2 PM5 Bluetooth Smart Communication Interface.
 // Every UUID is CE06xxxx-43E5-11E4-916C-0800200C9A66.
 const pm5 = id => `ce06${id}-43e5-11e4-916c-0800200c9a66`;
 const UUID = {
-  info:         pm5('0010'),
-  control:      pm5('0020'),
-  rowing:       pm5('0030'),
+  info:          pm5('0010'),
+  control:       pm5('0020'),
+  rowing:        pm5('0030'),
   generalStatus: pm5('0031'),
-  addStatus1:   pm5('0032'),
-  addStatus2:   pm5('0033'),
-  sampleRate:   pm5('0034'),
-  strokeData2:  pm5('0036'),
+  addStatus1:    pm5('0032'),
+  addStatus2:    pm5('0033'),
+  sampleRate:    pm5('0034'),
+  strokeData:    pm5('0035'),
+  strokeData2:   pm5('0036'),
+  forceCurve:    pm5('003d'),
 };
+const LBF_TO_N = 4.44822;
 
 const $ = id => document.getElementById(id);
 const ui = {
   dot: $('dot'), statusText: $('statusText'), hint: $('hint'),
   connectBtn: $('connectBtn'), demoBtn: $('demoBtn'),
-  pace: $('pace'), avgPace: $('avgPace'), spm: $('spm'), watts: $('watts'),
-  dist: $('dist'), time: $('time'), cal: $('cal'), hr: $('hr'),
 };
 
 // Little-endian unsigned integers of 1–3 bytes.
@@ -127,12 +231,14 @@ function fmtTime(seconds) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
            : `${m}:${String(s).padStart(2, '0')}`;
 }
-function fmtPace(seconds) {
+function fmtPace(seconds, decimals = 1) {
   if (!isFinite(seconds) || seconds <= 0 || seconds > 600) return '–:––';
   const m = Math.floor(seconds / 60);
-  const s = (seconds % 60).toFixed(1).padStart(4, '0');
+  const s = (seconds % 60).toFixed(decimals).padStart(decimals ? 3 + decimals : 2, '0');
   return `${m}:${s}`;
 }
+const nl = (x, d = 1) => x.toLocaleString('nl-NL', { minimumFractionDigits: d, maximumFractionDigits: d });
+const setText = (id, text) => { $(id).textContent = text; };
 
 function setStatus(text, state) {
   ui.statusText.textContent = text;
@@ -143,18 +249,61 @@ function setHint(text, isError = false) {
   ui.hint.classList.toggle('err', isError);
 }
 
-function render(d) {
-  if (d.elapsed !== undefined) ui.time.textContent = fmtTime(d.elapsed);
-  if (d.distance !== undefined) ui.dist.textContent = Math.floor(d.distance).toLocaleString('nl-NL');
-  if (d.pace !== undefined) ui.pace.textContent = fmtPace(d.pace);
-  if (d.avgPace !== undefined) ui.avgPace.textContent = fmtPace(d.avgPace);
-  if (d.spm !== undefined) ui.spm.textContent = d.spm || '–';
-  if (d.watts !== undefined) ui.watts.textContent = d.watts || '–';
-  if (d.calories !== undefined) ui.cal.textContent = d.calories;
-  if (d.hr !== undefined) ui.hr.textContent = d.hr && d.hr !== 255 ? d.hr : '–';
+// ---------------------------------------------------------------------------
+// Session state: live values, a per-second history, and per-stroke records.
+// ---------------------------------------------------------------------------
+
+const HISTORY_SECONDS = 300;
+const state = {
+  live: {},       // latest value of every field
+  history: [],    // {t, pace, spm, watts} roughly once per second
+  strokes: [],    // {count, driveLen, driveTime, recTime, dist, peak, avg}
+  curves: [],     // arrays of force in N, one per stroke
+};
+
+function resetSession() {
+  state.live = {};
+  state.history = [];
+  state.strokes = [];
+  state.curves = [];
 }
 
-// --- Parsers for the rowing service characteristics ---
+function update(d) {
+  // A new workout on the PM5 restarts its clock: start a fresh session.
+  if (d.elapsed !== undefined && state.live.elapsed !== undefined && d.elapsed + 5 < state.live.elapsed) {
+    resetSession();
+  }
+  Object.assign(state.live, d);
+
+  const L = state.live;
+  if (d.pace !== undefined && L.elapsed !== undefined) {
+    const last = state.history[state.history.length - 1];
+    if (!last || L.elapsed - last.t >= 1) {
+      state.history.push({ t: L.elapsed, pace: L.pace, spm: L.spm, watts: L.watts });
+      while (state.history.length && L.elapsed - state.history[0].t > HISTORY_SECONDS) state.history.shift();
+    }
+  }
+  scheduleDraw();
+}
+
+function addStroke(s) {
+  const last = state.strokes[state.strokes.length - 1];
+  if (last && last.count === s.count) return;
+  state.strokes.push(s);
+  if (state.strokes.length > 60) state.strokes.shift();
+  scheduleDraw();
+}
+
+function addCurve(points) {
+  if (points.length < 4) return;
+  state.curves.push(points);
+  if (state.curves.length > 10) state.curves.shift();
+  scheduleDraw();
+}
+
+// ---------------------------------------------------------------------------
+// Parsers for the PM5 rowing service characteristics.
+// ---------------------------------------------------------------------------
 
 // 0x0031 General status
 function parseGeneralStatus(v) {
@@ -162,24 +311,338 @@ function parseGeneralStatus(v) {
 }
 // 0x0032 Additional status 1
 function parseAddStatus1(v) {
-  return {
-    elapsed: u24(v, 0) / 100,
-    spm: u8(v, 5),
-    hr: u8(v, 6),
-    pace: u16(v, 7) / 100,
-    avgPace: u16(v, 9) / 100,
-  };
+  return { elapsed: u24(v, 0) / 100, spm: u8(v, 5), hr: u8(v, 6),
+           pace: u16(v, 7) / 100, avgPace: u16(v, 9) / 100 };
 }
 // 0x0033 Additional status 2
 function parseAddStatus2(v) {
   return { calories: u16(v, 6) };
+}
+// 0x0035 Stroke data
+function parseStrokeData(v) {
+  return {
+    driveLen: u8(v, 6) / 100,          // m
+    driveTime: u8(v, 7) / 100,         // s
+    recTime: u16(v, 8) / 100,          // s
+    dist: u16(v, 10) / 100,            // m per stroke
+    peak: u16(v, 12) / 10 * LBF_TO_N,  // N
+    avg: u16(v, 14) / 10 * LBF_TO_N,   // N
+    count: u16(v, 18),
+  };
 }
 // 0x0036 Additional stroke data
 function parseStrokeData2(v) {
   return { watts: u16(v, 3) };
 }
 
-// --- Bluetooth connection ---
+// 0x003D Force curve: one curve arrives split over several notifications.
+// Byte 0: high nibble = number of notifications in this curve, low nibble = points in this one.
+// Byte 1: sequence number. Then the points as 16-bit little-endian values in lbf.
+let curveBuf = [], curvePackets = 0, curveTimer = null;
+function flushCurve() {
+  clearTimeout(curveTimer);
+  if (curveBuf.length) addCurve(curveBuf);
+  curveBuf = [];
+  curvePackets = 0;
+}
+function onForceCurve(v) {
+  const total = u8(v, 0) >> 4;
+  const n = u8(v, 0) & 0x0f;
+  for (let i = 0; i < n && 2 + i * 2 + 1 < v.byteLength; i++) {
+    curveBuf.push(u16(v, 2 + i * 2) * LBF_TO_N);
+  }
+  curvePackets++;
+  clearTimeout(curveTimer);
+  if (curvePackets >= total) flushCurve();
+  else curveTimer = setTimeout(flushCurve, 400);   // don't wait forever for a lost packet
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
+// ---------------------------------------------------------------------------
+
+const C = {
+  accent: '#4fc3f7', accent2: '#f0b35a', muted: '#8593a3', grid: '#232c38', rec: '#3a4757', text: '#e8edf3',
+};
+
+let drawPending = false;
+function scheduleDraw() {
+  if (drawPending) return;
+  drawPending = true;
+  requestAnimationFrame(() => { drawPending = false; drawAll(); });
+}
+
+// Size the canvas to its box at device resolution; returns a context in CSS pixels.
+function prep(canvas) {
+  const r = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, r.width, r.height);
+  ctx.font = '11px system-ui, sans-serif';
+  return { ctx, w: r.width, h: r.height };
+}
+function empty(ctx, w, h, text = 'Nog geen data – begin met roeien') {
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, w / 2, h / 2);
+}
+function niceRange(min, max, minSpan) {
+  const span = Math.max(max - min, minSpan);
+  const mid = (min + max) / 2;
+  return [mid - span * 0.6, mid + span * 0.6];
+}
+
+function drawAll() {
+  const L = state.live;
+  // Dashboard
+  if (L.elapsed !== undefined) setText('time', fmtTime(L.elapsed));
+  if (L.distance !== undefined) setText('dist', Math.floor(L.distance).toLocaleString('nl-NL'));
+  if (L.pace !== undefined) { setText('pace', fmtPace(L.pace)); setText('tPace', fmtPace(L.pace)); }
+  if (L.avgPace !== undefined) setText('avgPace', fmtPace(L.avgPace));
+  if (L.spm !== undefined) { setText('spm', L.spm || '–'); setText('tSpm', L.spm || '–'); }
+  if (L.watts !== undefined) { setText('watts', L.watts || '–'); setText('tWatts', L.watts || '–'); }
+  if (L.calories !== undefined) setText('cal', L.calories);
+  if (L.hr !== undefined) setText('hr', L.hr && L.hr !== 255 ? L.hr : '–');
+
+  drawPaceChart();
+  drawPowerChart();
+  drawForce();
+  drawRhythm();
+}
+
+function timeAxis(ctx, pad, w, h, tMin, tMax) {
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const x = t => pad.l + (t - tMin) / (tMax - tMin) * (w - pad.l - pad.r);
+  for (let t = Math.ceil(tMin / 60) * 60; t <= tMax; t += 60) {
+    const px = x(t);
+    // Keep the labels at the edges inside the chart.
+    ctx.textAlign = px < pad.l + 16 ? 'left' : px > w - pad.r - 16 ? 'right' : 'center';
+    ctx.fillText(fmtTime(t) === '–:––' ? '0:00' : fmtTime(t), px, h - pad.b + 4);
+  }
+  return x;
+}
+
+function drawPaceChart() {
+  const { ctx, w, h } = prep($('paceChart'));
+  const H = state.history.filter(p => p.pace > 0 && p.pace < 600);
+  if (H.length < 2) return empty(ctx, w, h);
+  const pad = { l: 42, r: 8, t: 6, b: 18 };
+  const tMax = H[H.length - 1].t, tMin = Math.max(0, tMax - HISTORY_SECONDS);
+  const paces = H.map(p => p.pace);
+  const [lo, hi] = niceRange(Math.min(...paces), Math.max(...paces), 8);
+  // Faster (lower) split is drawn higher.
+  const y = p => pad.t + (p - lo) / (hi - lo) * (h - pad.t - pad.b);
+  const x = timeAxis(ctx, pad, w, h, tMin, Math.max(tMax, tMin + 60));
+
+  ctx.strokeStyle = C.grid; ctx.fillStyle = C.muted; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 3; i++) {
+    const p = lo + (hi - lo) * i / 3;
+    ctx.beginPath(); ctx.moveTo(pad.l, y(p)); ctx.lineTo(w - pad.r, y(p)); ctx.stroke();
+    ctx.fillText(fmtPace(p, 0), pad.l - 6, y(p));
+  }
+  // Average split over the window
+  const avg = paces.reduce((a, b) => a + b, 0) / paces.length;
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = C.muted;
+  ctx.beginPath(); ctx.moveTo(pad.l, y(avg)); ctx.lineTo(w - pad.r, y(avg)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Area under the line: filled towards the bottom (slower).
+  ctx.beginPath();
+  H.forEach((p, i) => i ? ctx.lineTo(x(p.t), y(p.pace)) : ctx.moveTo(x(p.t), y(p.pace)));
+  ctx.lineTo(x(H[H.length - 1].t), h - pad.b); ctx.lineTo(x(H[0].t), h - pad.b); ctx.closePath();
+  const g = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
+  g.addColorStop(0, '#4fc3f740'); g.addColorStop(1, '#4fc3f700');
+  ctx.fillStyle = g; ctx.fill();
+
+  ctx.beginPath();
+  H.forEach((p, i) => i ? ctx.lineTo(x(p.t), y(p.pace)) : ctx.moveTo(x(p.t), y(p.pace)));
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1;
+}
+
+function drawPowerChart() {
+  const { ctx, w, h } = prep($('powerChart'));
+  const H = state.history;
+  if (H.length < 2) return empty(ctx, w, h);
+  const pad = { l: 42, r: 30, t: 6, b: 18 };
+  const tMax = H[H.length - 1].t, tMin = Math.max(0, tMax - HISTORY_SECONDS);
+  const x = timeAxis(ctx, pad, w, h, tMin, Math.max(tMax, tMin + 60));
+  const wMax = Math.max(100, ...H.map(p => p.watts || 0)) * 1.15;
+  const sMax = Math.max(30, ...H.map(p => p.spm || 0)) * 1.15;
+  const yW = v => h - pad.b - v / wMax * (h - pad.t - pad.b);
+  const yS = v => h - pad.b - v / sMax * (h - pad.t - pad.b);
+
+  ctx.strokeStyle = C.grid; ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 3; i++) {
+    const yy = pad.t + (h - pad.t - pad.b) * i / 3;
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke();
+    const f = 1 - i / 3;
+    ctx.fillStyle = C.accent; ctx.textAlign = 'right'; ctx.fillText(Math.round(wMax * f), pad.l - 6, yy);
+    ctx.fillStyle = C.accent2; ctx.textAlign = 'left'; ctx.fillText(Math.round(sMax * f), w - pad.r + 6, yy);
+  }
+  // Watts as bars
+  const bw = Math.max(1, (w - pad.l - pad.r) / HISTORY_SECONDS * 0.8);
+  ctx.fillStyle = '#4fc3f7aa';
+  H.forEach(p => { if (p.watts) ctx.fillRect(x(p.t) - bw / 2, yW(p.watts), bw, h - pad.b - yW(p.watts)); });
+  // Stroke rate as a line
+  ctx.beginPath();
+  H.forEach((p, i) => i ? ctx.lineTo(x(p.t), yS(p.spm || 0)) : ctx.moveTo(x(p.t), yS(p.spm || 0)));
+  ctx.strokeStyle = C.accent2; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1;
+}
+
+// Resample a curve to n points so curves of different lengths can be compared.
+function resample(curve, n = 50) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const pos = i / (n - 1) * (curve.length - 1);
+    const a = Math.floor(pos), b = Math.min(curve.length - 1, a + 1);
+    out.push(curve[a] + (curve[b] - curve[a]) * (pos - a));
+  }
+  return out;
+}
+
+function drawForce() {
+  const { ctx, w, h } = prep($('forceChart'));
+  const curves = state.curves.slice(-8);
+  if (!curves.length) {
+    ['fPeak', 'fAvg', 'fPos', 'fCons'].forEach(id => setText(id, '–'));
+    return empty(ctx, w, h, 'Nog geen krachtcurve – begin met roeien');
+  }
+  const pad = { l: 40, r: 8, t: 8, b: 18 };
+  const fMax = Math.max(200, ...curves.flat()) * 1.1;
+  const x = f => pad.l + f * (w - pad.l - pad.r);
+  const y = v => h - pad.b - v / fMax * (h - pad.t - pad.b);
+
+  ctx.strokeStyle = C.grid; ctx.fillStyle = C.muted; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  const step = fMax > 800 ? 200 : 100;
+  for (let v = 0; v <= fMax; v += step) {
+    ctx.beginPath(); ctx.moveTo(pad.l, y(v)); ctx.lineTo(w - pad.r, y(v)); ctx.stroke();
+    ctx.fillText(v, pad.l - 6, y(v));
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('begin haal', x(0.08), h - pad.b + 4);
+  ctx.fillText('einde haal', x(0.92), h - pad.b + 4);
+
+  curves.forEach((c, i) => {
+    const last = i === curves.length - 1;
+    ctx.beginPath();
+    c.forEach((v, j) => { const px = x(j / (c.length - 1)), py = y(v); j ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.strokeStyle = last ? C.accent : `rgba(79,195,247,${0.12 + 0.25 * i / curves.length})`;
+    ctx.lineWidth = last ? 3 : 1.5;
+    ctx.stroke();
+  });
+  ctx.lineWidth = 1;
+
+  // Stats for the latest curve
+  const c = curves[curves.length - 1];
+  const peak = Math.max(...c);
+  const avg = c.reduce((a, b) => a + b, 0) / c.length;
+  const pos = c.indexOf(peak) / (c.length - 1) * 100;
+  setText('fPeak', Math.round(peak));
+  setText('fAvg', Math.round(avg));
+  setText('fPos', Math.round(pos) + '%');
+
+  // Consistency: how much the shapes of the recent curves differ from their mean shape.
+  if (curves.length >= 3) {
+    const norm = curves.map(k => { const r = resample(k); const m = Math.max(...r) || 1; return r.map(v => v / m); });
+    const mean = norm[0].map((_, j) => norm.reduce((s, k) => s + k[j], 0) / norm.length);
+    const rms = Math.sqrt(norm.reduce((s, k) => s + k.reduce((t, v, j) => t + (v - mean[j]) ** 2, 0) / k.length, 0) / norm.length);
+    setText('fCons', Math.max(0, Math.round(100 * (1 - rms * 3))) + '%');
+  } else {
+    setText('fCons', '–');
+  }
+}
+
+function drawRhythm() {
+  const S = state.strokes.slice(-30);
+  const { ctx, w, h } = prep($('rhythmChart'));
+  if (!S.length) {
+    ['rDps', 'rLen', 'rDrive', 'rRec'].forEach(id => setText(id, '–'));
+    return empty(ctx, w, h, 'Nog geen slagen – begin met roeien');
+  }
+  const s = S[S.length - 1];
+  const ratio = s.driveTime > 0 ? s.recTime / s.driveTime : 0;
+  setText('rRatio', ratio ? `1 : ${nl(ratio)}` : '– : –');
+  $('rBar').style.width = ratio ? (100 / (1 + ratio)) + '%' : '0';
+  setText('rDps', nl(s.dist));
+  setText('rLen', nl(s.driveLen, 2));
+  setText('rDrive', nl(s.driveTime, 2));
+  setText('rRec', nl(s.recTime, 2));
+
+  const spm = state.live.spm || 0;
+  let tip = 'Streef naar ongeveer 1 : 2 – snel trekken, rustig terug.';
+  if (ratio && ratio < 1.5 && spm < 28) tip = 'Je komt snel terug: neem meer tijd op de terugweg.';
+  else if (ratio >= 1.7 && ratio <= 2.6) tip = 'Mooi ritme – houd dit vast.';
+  else if (ratio > 2.6) tip = 'Lange terugweg – prima bij een laag tempo.';
+  setText('rCoach', tip);
+
+  // Stacked bar per stroke: drive (bottom) and recovery (top), height = stroke duration.
+  const pad = { l: 32, r: 8, t: 6, b: 6 };
+  const tMax = Math.max(3, ...S.map(k => k.driveTime + k.recTime)) * 1.1;
+  const y = v => h - pad.b - v / tMax * (h - pad.t - pad.b);
+  ctx.strokeStyle = C.grid; ctx.fillStyle = C.muted; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let v = 0; v <= tMax; v += 1) {
+    ctx.beginPath(); ctx.moveTo(pad.l, y(v)); ctx.lineTo(w - pad.r, y(v)); ctx.stroke();
+    ctx.fillText(v + 's', pad.l - 6, y(v));
+  }
+  const slot = (w - pad.l - pad.r) / 30;
+  S.forEach((k, i) => {
+    const bx = pad.l + (30 - S.length + i) * slot + slot * 0.15, bw = slot * 0.7;
+    ctx.fillStyle = C.accent;
+    ctx.fillRect(bx, y(k.driveTime), bw, h - pad.b - y(k.driveTime));
+    ctx.fillStyle = C.rec;
+    ctx.fillRect(bx, y(k.driveTime + k.recTime), bw, y(k.driveTime) - y(k.driveTime + k.recTime));
+  });
+}
+
+new ResizeObserver(scheduleDraw).observe($('views'));
+
+// ---------------------------------------------------------------------------
+// Swipe between views
+// ---------------------------------------------------------------------------
+
+const viewsEl = $('views');
+const views = [...viewsEl.querySelectorAll('.view')];
+const tabs = views.map((v, i) => {
+  const b = document.createElement('button');
+  b.textContent = v.dataset.name;
+  b.addEventListener('click', () => showView(i));
+  $('tabs').appendChild(b);
+  return b;
+});
+function currentView() {
+  return Math.round(viewsEl.scrollLeft / (viewsEl.clientWidth + 16));
+}
+function showView(i, smooth = true) {
+  i = Math.max(0, Math.min(views.length - 1, i));
+  viewsEl.scrollTo({ left: views[i].offsetLeft - viewsEl.offsetLeft, behavior: smooth ? 'smooth' : 'instant' });
+}
+function markTab() {
+  const i = currentView();
+  tabs.forEach((b, j) => b.classList.toggle('active', i === j));
+  try { localStorage.setItem('rowdash.view', i); } catch {}
+}
+viewsEl.addEventListener('scroll', markTab, { passive: true });
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') showView(currentView() + 1);
+  if (e.key === 'ArrowLeft') showView(currentView() - 1);
+});
+// Keep the same view in place when the phone is rotated.
+let viewBeforeResize = 0;
+new ResizeObserver(() => showView(viewBeforeResize, false)).observe(viewsEl);
+viewsEl.addEventListener('scrollend', () => { viewBeforeResize = currentView(); });
+try { viewBeforeResize = +localStorage.getItem('rowdash.view') || 0; } catch {}
+showView(viewBeforeResize, false);
+markTab();
+
+// ---------------------------------------------------------------------------
+// Bluetooth connection
+// ---------------------------------------------------------------------------
 
 let device = null;
 let wakeLock = null;
@@ -193,9 +656,9 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && (device?.gatt?.connected || demoTimer)) keepScreenOn();
 });
 
-async function subscribe(service, uuid, parser) {
+async function subscribe(service, uuid, handler) {
   const ch = await service.getCharacteristic(uuid);
-  ch.addEventListener('characteristicvaluechanged', e => render(parser(e.target.value)));
+  ch.addEventListener('characteristicvaluechanged', e => handler(e.target.value));
   await ch.startNotifications();
 }
 
@@ -224,13 +687,18 @@ async function connect() {
       await rate.writeValue(new Uint8Array([2]));
     } catch { /* default rate is fine too */ }
 
-    await subscribe(rowing, UUID.generalStatus, parseGeneralStatus);
-    await subscribe(rowing, UUID.addStatus1, parseAddStatus1);
-    await subscribe(rowing, UUID.addStatus2, parseAddStatus2);
-    await subscribe(rowing, UUID.strokeData2, parseStrokeData2);
+    resetSession();
+    await subscribe(rowing, UUID.generalStatus, v => update(parseGeneralStatus(v)));
+    await subscribe(rowing, UUID.addStatus1, v => update(parseAddStatus1(v)));
+    await subscribe(rowing, UUID.addStatus2, v => update(parseAddStatus2(v)));
+    await subscribe(rowing, UUID.strokeData, v => addStroke(parseStrokeData(v)));
+    await subscribe(rowing, UUID.strokeData2, v => update(parseStrokeData2(v)));
+    try {
+      await subscribe(rowing, UUID.forceCurve, onForceCurve);
+    } catch { /* older firmware without force curve over BLE */ }
 
     setStatus(`Verbonden met ${device.name || 'PM5'}`, 'ok');
-    setHint('Begin met roeien – de waarden verschijnen vanzelf.');
+    setHint('Begin met roeien – de waarden verschijnen vanzelf. Swipe voor andere weergaven.');
     ui.connectBtn.textContent = 'Verbreek';
     keepScreenOn();
   } catch (err) {
@@ -263,41 +731,70 @@ ui.connectBtn.addEventListener('click', () => {
   }
 });
 
-// --- Demo mode: simulated rowing, to test the dashboard without the erg ---
+// ---------------------------------------------------------------------------
+// Demo mode: simulated rowing, to test the views without the erg
+// ---------------------------------------------------------------------------
 
-let demoTimer = null;
+let demoTimer = null, demoStrokeTimer = null;
 function startDemo() {
+  resetSession();
   const start = performance.now();
-  let distance = 0, last = start, calories = 0;
+  let distance = 0, last = start, count = 0;
+  const now = () => (performance.now() - start) / 1000;
+  const pace = t => 118 + 6 * Math.sin(t / 20) + (Math.random() - .5) * 2;   // ~1:58 /500m
+  const spm = t => Math.round(24 + 2 * Math.sin(t / 15));
+
   setStatus('Demo', 'ok');
-  setHint('Demomodus: gesimuleerde data. Tik op “Stop demo” om te stoppen.');
+  setHint('Demomodus: gesimuleerde data. Swipe voor andere weergaven.');
   ui.demoBtn.textContent = 'Stop demo';
   keepScreenOn();
+
   demoTimer = setInterval(() => {
-    const now = performance.now();
-    const t = (now - start) / 1000;
-    const pace = 118 + 6 * Math.sin(t / 20) + (Math.random() - .5) * 2; // ~1:58 /500m
-    const speed = 500 / pace;
-    distance += speed * (now - last) / 1000;
-    last = now;
+    const t = now();
+    const p = pace(t), speed = 500 / p;
+    distance += speed * (performance.now() - last) / 1000;
+    last = performance.now();
     const watts = Math.round(2.8 * speed ** 3);
-    calories = Math.round(t * (watts * 4 + 300) / 3600 / 1.1);
-    render({
-      elapsed: t, distance, pace, avgPace: t > 0 ? t * 500 / distance : 0,
-      spm: Math.round(24 + 2 * Math.sin(t / 15)), watts, calories,
-      hr: Math.round(140 + 12 * Math.sin(t / 40)),
+    update({
+      elapsed: t, distance, pace: p, avgPace: t > 0 ? t * 500 / distance : 0, spm: spm(t), watts,
+      calories: Math.round(t * (watts * 4 + 300) / 3600 / 1.1), hr: Math.round(140 + 12 * Math.sin(t / 40)),
     });
   }, 250);
+
+  const stroke = () => {
+    const t = now();
+    const period = 60 / spm(t);
+    const driveTime = 0.75 + (Math.random() - .5) * 0.08 + 0.05 * Math.sin(t / 30);
+    const recTime = period - driveTime;
+    // Force curve: fast rise, rounded peak around 40% of the drive, slower decay.
+    const n = 30 + Math.floor(Math.random() * 6);
+    const peakN = 620 + (Math.random() - .5) * 60;
+    const skew = 0.8 + Math.random() * 0.3;
+    const curve = Array.from({ length: n }, (_, i) => {
+      const f = i / (n - 1);
+      return peakN * Math.pow(Math.sin(Math.PI * Math.pow(f, skew)), 1.3) * (1 + (Math.random() - .5) * 0.04);
+    });
+    addCurve(curve);
+    addStroke({
+      count: ++count, driveTime, recTime, driveLen: 1.42 + (Math.random() - .5) * 0.06,
+      dist: (500 / pace(t)) * period, peak: peakN, avg: peakN * 0.55,
+    });
+    demoStrokeTimer = setTimeout(stroke, period * 1000);
+  };
+  stroke();
 }
 function stopDemo() {
   if (!demoTimer) return;
   clearInterval(demoTimer);
+  clearTimeout(demoStrokeTimer);
   demoTimer = null;
   ui.demoBtn.textContent = 'Demo';
   setStatus('Niet verbonden');
   wakeLock?.release().catch(() => {});
 }
 ui.demoBtn.addEventListener('click', () => demoTimer ? stopDemo() : startDemo());
+
+drawAll();
 </script>
 </body>
 </html>
