@@ -780,15 +780,55 @@ async function loadHistory(force = false) {
   $('hList').innerHTML = '<div class="h-empty">Trainingen laden…</div>';
   try {
     const r = await c2api('users/me/results', { number: 250 });
-    hist.results = (r.data || []).sort((a, b) => resultDate(b) - resultDate(a));
+    hist.logbook = r.data || [];
+    hist.connected = true;
     hist.loaded = true;
-    renderHistory();
+    refreshHistory();
   } catch (err) {
-    if (err.notConnected) showConnect();
-    else $('hList').innerHTML = `<div class="h-empty">${err.message}</div>`;
+    if (err.notConnected) {
+      hist.logbook = [];
+      hist.connected = false;
+      hist.loaded = true;
+      // Workouts read from the PM5 are worth showing even without a Logbook connection.
+      if (pm5Store().length) refreshHistory(); else showConnect();
+    } else {
+      $('hList').innerHTML = `<div class="h-empty">${err.message}</div>`;
+    }
   } finally {
     hist.loading = false;
   }
+}
+
+// Workouts read from the PM5 memory, kept on this device.
+const PM5_STORE = 'rowdash.pm5';
+function pm5Store() {
+  try { return JSON.parse(localStorage.getItem(PM5_STORE)) || []; } catch { return []; }
+}
+function savePm5Records(records) {
+  const pad = n => String(n).padStart(2, '0');
+  const byId = new Map(pm5Store().map(r => [r.id, r]));
+  records.forEach(r => {
+    const d = r.date;
+    const id = `pm5-${d.getTime()}-${r.distance}`;
+    byId.set(id, {
+      id, source: 'pm5', type: 'rower', pmType: r.typeName,
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`,
+      distance: r.distance, time: Math.round(r.time * 10), stroke_rate: r.spm || undefined,
+    });
+  });
+  try { localStorage.setItem(PM5_STORE, JSON.stringify([...byId.values()])); } catch {}
+}
+
+// Logbook results plus PM5 workouts; a PM5 workout that is also in the Logbook is shown once.
+function refreshHistory() {
+  const logbook = hist.logbook || [];
+  const pm5 = pm5Store().filter(p => !logbook.some(l =>
+    Math.abs(resultDate(l) - resultDate(p)) <= 5 * 60e3 && Math.abs((l.distance || 0) - p.distance) <= 10));
+  hist.results = [...logbook, ...pm5].sort((a, b) => resultDate(b) - resultDate(a));
+  $('hConnect').hidden = true;
+  $('hMain').hidden = false;
+  $('hLogout').textContent = hist.connected ? 'Ontkoppel' : 'Koppel Logbook';
+  renderHistory();
 }
 
 function startOfWeek(d) {
@@ -821,7 +861,7 @@ function renderHistory() {
     ].filter(Boolean).join(' · ');
     b.innerHTML = `
       <div class="h-date">${fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })} · ${d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</div>
-      <div class="h-type">${TYPE_NAMES[r.type] || r.type || ''}</div>
+      <div class="h-type">${TYPE_NAMES[r.type] || r.type || ''}${r.source === 'pm5' ? ' · PM5' : ''}</div>
       <div class="h-dist">${meters(r.distance || 0)} m</div>
       <div class="h-time">${fmtTenths(r.time || 0)}</div>
       <div class="h-sub">${extra}</div>`;
@@ -879,6 +919,13 @@ async function openResult(r) {
   $('dSplits').innerHTML = '<div class="h-empty">Laden…</div>';
   drawDetail();
 
+  if (r.source === 'pm5') {
+    hist.open.strokes = [];
+    $('dSplits').innerHTML = `<div class="h-empty">${r.pmType || ''} – uit het PM5-geheugen. Splits en slagdata zijn
+      alleen beschikbaar voor trainingen in het Logbook.</div>`;
+    drawDetail();
+    return;
+  }
   try {
     const [full, strokes] = await Promise.all([
       c2api(`users/me/results/${r.id}`).then(x => x.data || x),
@@ -966,9 +1013,10 @@ document.addEventListener('visibilitychange', () => {
 });
 $('hRefresh').addEventListener('click', () => loadHistory(true));
 $('hLogout').addEventListener('click', async () => {
+  if (!hist.connected) { $('hConnectBtn').click(); return; }
   await fetch('/api/c2/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
-  hist.loaded = false; hist.results = [];
-  showConnect();
+  hist.connected = false; hist.logbook = [];
+  if (pm5Store().length) refreshHistory(); else showConnect();
 });
 $('dBack').addEventListener('click', () => { hist.open = null; $('hDetail').hidden = true; });
 new ResizeObserver(() => { drawWeeks(); drawDetail(); }).observe($('views'));
@@ -1163,7 +1211,8 @@ async function readPm5Memory() {
       if ((top - a) % 2048 === 0) findRecords();
     }
     findRecords();
-    status(pmMem.stop ? 'Gestopt.' : `Klaar: ${pmMem.records.length} trainingen gevonden.` + (mode.guessed ? ' (bytevolgorde niet bevestigd)' : ''));
+    if (pmMem.records.length) { savePm5Records(pmMem.records); if (hist.loaded) refreshHistory(); }
+    status(pmMem.stop ? 'Gestopt.' : `Klaar: ${pmMem.records.length} trainingen gevonden en bewaard in Historie.` + (mode.guessed ? ' (bytevolgorde niet bevestigd)' : ''));
     pmMem.mode = mode;
   } catch (err) {
     status(`Mislukt: ${err.message}`);
