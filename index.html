@@ -159,6 +159,12 @@
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-align: right; padding: 4px 6px; position: sticky; top: 0; background: var(--panel); }
   td { text-align: right; padding: 6px; border-top: 1px solid var(--line); }
   th:first-child, td:first-child { text-align: left; }
+  .pm-body { flex: 1; min-height: 0; overflow: auto; }
+  .pm-bar { height: 6px; border-radius: 3px; background: #2a3441; overflow: hidden; margin: 8px 0; }
+  .pm-bar div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .pm-log { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); white-space: pre-wrap; word-break: break-all; margin: 6px 0; }
+  .pm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pm-intro { color: var(--muted); font-size: 14px; line-height: 1.4; margin: 0 0 8px; }
   @media (orientation: landscape) {
     .hist-main { grid-template-columns: 1fr 1fr 1fr 2.4fr; grid-template-rows: 0.7fr 1.5fr; }
     .hist-main .span { grid-column: 1 / 4; }
@@ -250,6 +256,7 @@
       <div class="label">Concept2 Logbook</div>
       <p>Koppel je Logbook om al je trainingen hier te zien – ook die je met ErgData of zonder app hebt geroeid.</p>
       <button id="hConnectBtn">Koppel Logbook</button>
+      <button class="secondary" id="pmOpen">Of: lees de PM5 zelf uit (experimenteel)</button>
       <p class="hint err" id="hError"></p>
     </div>
 
@@ -264,6 +271,7 @@
       <div class="tile span list-tile">
         <div class="label-row">
           <div class="label">Trainingen</div>
+          <button class="link" id="pmOpen2">PM5</button>
           <button class="link" id="hRefresh">Vernieuw</button>
           <button class="link" id="hLogout">Ontkoppel</button>
         </div>
@@ -291,6 +299,25 @@
       <div class="tile d-splits">
         <div class="label">Splits</div>
         <div id="dSplits"></div>
+      </div>
+    </div>
+
+    <div class="hist-detail" id="hPm5" hidden>
+      <div class="d-head">
+        <button class="secondary" id="pmBack">‹ Terug</button>
+        <h2>PM5-geheugen</h2>
+      </div>
+      <div class="tile pm-body">
+        <p class="pm-intro">Experimenteel: haalt de trainingen uit het geheugen van de PM5 via Bluetooth, met alleen
+          leescommando's. Verbind eerst de PM5 en laat hem in het hoofdmenu staan. Je kunt tussentijds stoppen.</p>
+        <div class="pm-actions">
+          <button id="pmRun">PM5-geheugen uitlezen</button>
+          <button class="secondary" id="pmCopy">Kopieer ruwe data</button>
+        </div>
+        <div class="pm-bar"><div id="pmBar"></div></div>
+        <div class="coach" id="pmStatus"></div>
+        <pre class="pm-log" id="pmLog"></pre>
+        <div id="pmResults"></div>
       </div>
     </div>
   </section>
@@ -947,6 +974,271 @@ $('dBack').addEventListener('click', () => { hist.open = null; $('hDetail').hidd
 new ResizeObserver(() => { drawWeeks(); drawDetail(); }).observe($('views'));
 
 // ---------------------------------------------------------------------------
+// PM5 memory: read stored workouts with (undocumented) CSAFE log commands over Bluetooth.
+// Read-only by construction: only the GET commands in SAFE_GETS can be sent.
+// ---------------------------------------------------------------------------
+
+// CSAFE frame: F1 <stuffed contents + checksum> F2. Bytes F0–F3 are escaped as F3 0x.
+function csafeFrame(contents) {
+  const chk = contents.reduce((a, b) => a ^ b, 0);
+  const out = [0xF1];
+  for (const b of [...contents, chk]) {
+    if (b >= 0xF0 && b <= 0xF3) out.push(0xF3, b - 0xF0); else out.push(b);
+  }
+  out.push(0xF2);
+  return new Uint8Array(out);
+}
+function csafeUnframe(bytes) {
+  const start = bytes.indexOf(0xF1), end = bytes.lastIndexOf(0xF2);
+  if (start < 0 || end <= start) throw new Error('onvolledig antwoord');
+  const raw = [];
+  for (let i = start + 1; i < end; i++) {
+    if (bytes[i] === 0xF3) { raw.push(0xF0 + bytes[++i]); } else raw.push(bytes[i]);
+  }
+  const chk = raw.pop();
+  if (raw.reduce((a, b) => a ^ b, 0) !== chk) throw new Error('checksum klopt niet');
+  return raw;   // [status, cmd, len, data..., cmd, len, data...]
+}
+
+// Proprietary GET commands that only read. Anything else is refused.
+const SAFE_WRAPPERS = new Set([0x7E, 0x7F]);
+const SAFE_GETS = new Set([0x99 /* INTERNALLOGPARAMS */, 0x6A /* INTERNALLOGMEMORY */, 0x58 /* CURRENT_LOG_STRUCTURE */, 0x72 /* WORKOUT_HASH */]);
+
+let csafe = null;   // { rx, tx, poll } once the control service is set up
+
+async function setupCsafe(server) {
+  const control = await server.getPrimaryService(UUID.control);
+  const rx = await control.getCharacteristic(pm5('0021'));
+  const tx = await control.getCharacteristic(pm5('0022'));
+  const c = { rx, tx, buf: [], waiter: null, queue: Promise.resolve(), poll: false };
+  const onData = v => {
+    for (let i = 0; i < v.byteLength; i++) c.buf.push(v.getUint8(i));
+    if (c.buf.includes(0xF2) && c.waiter) { const w = c.waiter; c.waiter = null; w(c.buf.splice(0)); }
+  };
+  tx.addEventListener('characteristicvaluechanged', e => onData(e.target.value));
+  try { await tx.startNotifications(); } catch { c.poll = true; }   // older firmware: poll instead
+  c.onData = onData;
+  return c;
+}
+
+function csafeSend(contents, timeout = 1500) {
+  const c = csafe;
+  if (!c) return Promise.reject(new Error('Geen verbinding met de PM5'));
+  const job = c.queue.then(async () => {
+    c.buf = [];
+    const frame = csafeFrame(contents);
+    const reply = new Promise((resolve, reject) => {
+      c.waiter = resolve;
+      setTimeout(() => { if (c.waiter === resolve) { c.waiter = null; reject(new Error('geen antwoord van de PM5')); } }, timeout);
+    });
+    for (let i = 0; i < frame.length; i += 20) {
+      const part = frame.slice(i, i + 20);
+      if (c.rx.writeValueWithResponse) await c.rx.writeValueWithResponse(part); else await c.rx.writeValue(part);
+    }
+    if (c.poll) {
+      for (let k = 0; k < 20 && c.waiter; k++) { c.onData(await c.tx.readValue()); }
+    }
+    const bytes = await reply;
+    await new Promise(r => setTimeout(r, 20));   // the PM wants a short gap between frames
+    return csafeUnframe(bytes);
+  });
+  c.queue = job.catch(() => {});
+  return job;
+}
+
+// Send one wrapped proprietary GET and return that sub-command's data bytes.
+async function pmGet(wrapper, sub, data = []) {
+  if (!SAFE_WRAPPERS.has(wrapper) || !SAFE_GETS.has(sub)) throw new Error('commando niet toegestaan');
+  const inner = sub >= 0x80 ? [sub] : [sub, data.length, ...data];
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await csafeSend([wrapper, inner.length, ...inner]);
+      // r = [status, wrapper, M, sub, len, data...]
+      for (let i = 1; i + 1 < r.length;) {
+        const cmd = r[i], len = r[i + 1];
+        if (cmd === wrapper) { i += 2; continue; }   // step into the wrapper
+        if (cmd === sub) return { status: r[0], data: r.slice(i + 2, i + 2 + len), raw: r };
+        i += 2 + len;
+      }
+      return { status: r[0], data: null, raw: r };
+    } catch (err) { lastErr = err; }
+  }
+  throw lastErr;
+}
+
+const be32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+const le32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+const addrBytes = (a, msbFirst) => {
+  const b = [(a >>> 24) & 255, (a >>> 16) & 255, (a >>> 8) & 255, a & 255];
+  return msbFirst ? b : b.reverse();
+};
+
+async function readBlock(addr, msbFirst, wrapper = 0x7F) {
+  const r = await pmGet(wrapper, 0x6A, [...addrBytes(addr, msbFirst), 64]);
+  if (!r.data || !r.data.length) return null;
+  return r.data.slice(1, 1 + r.data[0]);
+}
+
+// Workout record header, as in the PM5's LogDataStorage.bin (big-endian fields).
+const PM_TYPES = { 1: 'Vrij roeien', 3: 'Afstand', 5: 'Tijd', 6: 'Tijdintervallen', 7: 'Afstandsintervallen',
+  8: 'Variabele intervallen', 10: 'Calorieën', 12: 'Calorie-intervallen' };
+function parseRecord(b, o) {
+  if (b[o] !== 0x95 || o + 32 > b.length) return null;
+  const type = b[o + 1];
+  if (!PM_TYPES[type]) return null;
+  const ts = be32(b, o + 8);
+  const year = 2000 + (ts >>> 25), day = (ts >>> 20) & 31, month = (ts >>> 16) & 15, hour = (ts >>> 8) & 255, minute = ts & 255;
+  if (year < 2010 || year > 2040 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+  const time = ((b[o + 22] << 8) | b[o + 23]) / 10;
+  const distance = be32(b, o + 24);
+  if (distance > 1e6 || time <= 0) return null;
+  return { offset: o, type, typeName: PM_TYPES[type], date: new Date(year, month - 1, day, hour, minute),
+    time, distance, spm: b[o + 28] };
+}
+
+const pmMem = { running: false, stop: false, blocks: new Map(), log: [], records: [] };
+
+function pmLog(line) {
+  pmMem.log.push(line);
+  $('pmLog').textContent = pmMem.log.slice(-6).join('\n');
+}
+const hex = arr => [...arr].map(x => x.toString(16).padStart(2, '0')).join(' ');
+
+async function readPm5Memory() {
+  if (pmMem.running) { pmMem.stop = true; return; }
+  if (!csafe || !device?.gatt?.connected) {
+    $('pmStatus').textContent = 'Verbind eerst de PM5 (tabblad Live), en zorg dat hij in het hoofdmenu staat.';
+    return;
+  }
+  Object.assign(pmMem, { running: true, stop: false, blocks: new Map(), log: [], records: [] });
+  $('pmRun').textContent = 'Stop';
+  $('pmResults').innerHTML = '';
+  const status = t => { $('pmStatus').textContent = t; };
+  try {
+    status('Logparameters opvragen…');
+    const p = await pmGet(0x7E, 0x99);
+    if (!p.data || p.data.length < 6) throw new Error('PM5 gaf geen logparameters terug' + (p.raw ? ` (${hex(p.raw)})` : ''));
+    pmLog(`logparams: ${hex(p.data)}`);
+    const lastLen = { msb: (p.data[4] << 8) | p.data[5], lsb: p.data[4] | (p.data[5] << 8) };
+    const cand = [
+      { name: 'MSB', addr: be32(p.data, 0), len: lastLen.msb },
+      { name: 'LSB', addr: le32(p.data, 0), len: lastLen.lsb },
+    ];
+
+    // Find out the byte order: the last log entry should start with the 0x95 record marker.
+    status('Bytevolgorde bepalen…');
+    let mode = null;
+    for (const c of cand) {
+      for (const msbFirst of [true, false]) {
+        for (const wrapper of [0x7F, 0x7E]) {
+          const blk = await readBlock(c.addr, msbFirst, wrapper).catch(() => null);
+          pmLog(`probe ${c.name} addr=0x${c.addr.toString(16)} req=${msbFirst ? 'MSB' : 'LSB'} wrap=${wrapper.toString(16)}: ${blk ? hex(blk.slice(0, 8)) : 'geen data'}`);
+          if (blk && blk[0] === 0x95) { mode = { ...c, msbFirst, wrapper }; break; }
+        }
+        if (mode) break;
+      }
+      if (mode) break;
+    }
+    if (!mode) {
+      // No marker found: still read from 0 with the spec's byte order, so the dump shows what memory looks like.
+      mode = { ...cand[0], msbFirst: true, wrapper: 0x7F, guessed: true };
+      pmLog('geen 0x95-marker gevonden bij het logadres; lees vanaf 0 met MSB');
+    }
+
+    // Scan backwards from the end of the newest entry: recent workouts show up first,
+    // and the user can stop once they have what they need.
+    const top = Math.ceil((mode.addr + Math.max(mode.len, 64)) / 64) * 64;
+    let emptyRun = 0;
+    const t0 = performance.now();
+    for (let a = top - 64; a >= 0 && !pmMem.stop; a -= 64) {
+      const blk = pmMem.blocks.get(a) || await readBlock(a, mode.msbFirst, mode.wrapper).catch(() => null);
+      if (blk) pmMem.blocks.set(a, blk);
+      emptyRun = blk && blk.some(x => x !== 0xFF && x !== 0x00) ? 0 : emptyRun + 1;
+      if (emptyRun > 256) { pmLog(`16 KB leeg onder 0x${a.toString(16)}: begin van het log bereikt`); break; }
+      const done = (top - a) / top;
+      const eta = (performance.now() - t0) / done * (1 - done) / 1000;
+      status(`Geheugen lezen… ${Math.round(done * 100)}% (${Math.round((top - a) / 1024)} / ${Math.round(top / 1024)} KB, nog ~${Math.ceil(eta)} s)`);
+      $('pmBar').style.width = (done * 100) + '%';
+      if ((top - a) % 2048 === 0) findRecords();
+    }
+    findRecords();
+    status(pmMem.stop ? 'Gestopt.' : `Klaar: ${pmMem.records.length} trainingen gevonden.` + (mode.guessed ? ' (bytevolgorde niet bevestigd)' : ''));
+    pmMem.mode = mode;
+  } catch (err) {
+    status(`Mislukt: ${err.message}`);
+    pmLog(`fout: ${err.message}`);
+  } finally {
+    pmMem.running = false;
+    $('pmRun').textContent = 'PM5-geheugen uitlezen';
+  }
+}
+
+// Stitch the blocks read so far into one buffer and look for workout headers.
+function findRecords() {
+  const addrs = [...pmMem.blocks.keys()].sort((a, b) => a - b);
+  if (!addrs.length) return;
+  const seen = new Set(), found = [];
+  // Stitch runs of consecutive 64-byte blocks, so records crossing a block edge are found too.
+  for (let i = 0; i < addrs.length;) {
+    const base = addrs[i], buf = [];
+    let a = base;
+    while (i < addrs.length && addrs[i] === a) { buf.push(...pmMem.blocks.get(a)); a += 64; i++; }
+    for (let o = 0; o < buf.length; o++) {
+      const r = parseRecord(buf, o);
+      if (!r) continue;
+      const key = r.date.getTime() + ':' + r.distance + ':' + r.time;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push({ ...r, addr: base + o });
+    }
+  }
+  pmMem.records = found.sort((a, b) => b.date - a.date);
+  renderPm5Records();
+}
+
+function renderPm5Records() {
+  const R = pmMem.records;
+  const months = new Map();
+  R.forEach(r => {
+    const k = r.date.getFullYear() * 100 + r.date.getMonth();
+    const m = months.get(k) || { date: r.date, time: 0, distance: 0 };
+    m.time += r.time; m.distance += r.distance;
+    months.set(k, m);
+  });
+  const monthRows = [...months.entries()].sort((a, b) => b[0] - a[0]).map(([, m]) =>
+    `<tr><td>${fmtDate(m.date, { month: 'short', year: 'numeric' })}</td><td>${fmtTime(m.time)}</td><td>${meters(m.distance)}</td></tr>`).join('');
+  const rows = R.map(r => `<tr><td>${fmtDate(r.date, { day: 'numeric', month: 'short', year: '2-digit' })} ${r.date.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</td>
+    <td>${r.typeName}</td><td>${meters(r.distance)}</td><td>${fmtTime(r.time)}</td><td>${r.spm || '–'}</td></tr>`).join('');
+  $('pmResults').innerHTML = R.length ? `
+    <div class="label">Per maand – vergelijk met Menu › Logboek › Maandtotalen op de PM5</div>
+    <table><thead><tr><th>Maand</th><th>Tijd</th><th>m</th></tr></thead><tbody>${monthRows}</tbody></table>
+    <div class="label" style="margin-top:10px">Trainingen</div>
+    <table><thead><tr><th>Datum</th><th>Soort</th><th>m</th><th>Tijd</th><th>s/m</th></tr></thead><tbody>${rows}</tbody></table>` : '';
+}
+
+async function copyPm5Dump() {
+  const lines = [`RowDash PM5 dump ${new Date().toISOString()}`, `device: ${device?.name || '?'}`, ...pmMem.log,
+    `mode: ${JSON.stringify(pmMem.mode || null)}`, `records: ${pmMem.records.length}`];
+  pmMem.records.slice(0, 40).forEach(r => lines.push(`rec @0x${r.addr.toString(16)} ${r.date.toISOString()} type=${r.type} dist=${r.distance} time=${r.time} spm=${r.spm}`));
+  // First 2 KB and the blocks around each record, as hex.
+  const want = new Set();
+  for (let a = 0; a < 2048; a += 64) want.add(a);
+  pmMem.records.slice(0, 10).forEach(r => { const b = r.addr - (r.addr % 64); want.add(b); want.add(b + 64); });
+  if (pmMem.mode) { const b = pmMem.mode.addr - (pmMem.mode.addr % 64); want.add(b); want.add(b + 64); }
+  [...want].sort((a, b) => a - b).forEach(a => { const blk = pmMem.blocks.get(a); if (blk) lines.push(`${a.toString(16).padStart(6, '0')}: ${hex(blk)}`); });
+  const text = lines.join('\n');
+  try { await navigator.clipboard.writeText(text); $('pmStatus').textContent = 'Ruwe data gekopieerd – plak die in de chat met Claude.'; }
+  catch { $('pmStatus').textContent = 'Kopiëren lukte niet.'; }
+}
+
+$('pmOpen').addEventListener('click', () => { $('hPm5').hidden = false; });
+$('pmOpen2').addEventListener('click', () => { $('hPm5').hidden = false; });
+$('pmBack').addEventListener('click', () => { $('hPm5').hidden = true; });
+$('pmRun').addEventListener('click', readPm5Memory);
+$('pmCopy').addEventListener('click', copyPm5Dump);
+
+// ---------------------------------------------------------------------------
 // Swipe between views
 // ---------------------------------------------------------------------------
 
@@ -1048,6 +1340,7 @@ async function connect() {
     try {
       await subscribe(rowing, UUID.forceCurve, onForceCurve);
     } catch { /* older firmware without force curve over BLE */ }
+    try { csafe = await setupCsafe(server); } catch { csafe = null; }   // for reading the PM5 memory
 
     setStatus(`Verbonden met ${device.name || 'PM5'}`, 'ok');
     setHint('Begin met roeien – de waarden verschijnen vanzelf. Swipe voor andere weergaven.');
@@ -1075,6 +1368,7 @@ function onDisconnected() {
   ui.demoBtn.hidden = false;
   wakeLock?.release().catch(() => {});
   device = null;
+  csafe = null;
 }
 
 ui.connectBtn.addEventListener('click', () => {
