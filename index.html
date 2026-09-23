@@ -1052,6 +1052,7 @@ async function connect() {
     setStatus(`Verbonden met ${device.name || 'PM5'}`, 'ok');
     setHint('Begin met roeien – de waarden verschijnen vanzelf. Swipe voor andere weergaven.');
     ui.connectBtn.textContent = 'Verbreek';
+    ui.demoBtn.hidden = true;   // demo data would mix with the real rowing data
     keepScreenOn();
   } catch (err) {
     if (err.name === 'NotFoundError') {
@@ -1071,6 +1072,7 @@ function onDisconnected() {
   setStatus('Verbinding verbroken', 'err');
   setHint('De verbinding met de PM5 is weggevallen. Tik op “Verbind PM5” om opnieuw te verbinden.');
   ui.connectBtn.textContent = 'Verbind PM5';
+  ui.demoBtn.hidden = false;
   wakeLock?.release().catch(() => {});
   device = null;
 }
