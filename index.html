@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0f14">
 <title>RowDash</title>
+<!-- use-credentials: the site sits behind Vercel Authentication, so the manifest needs the login cookie -->
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="icon" href="/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <style>
   :root {
     --bg: #0b0f14;
@@ -795,6 +799,10 @@ function stopDemo() {
 ui.demoBtn.addEventListener('click', () => demoTimer ? stopDemo() : startDemo());
 
 drawAll();
+
+if ('serviceWorker' in navigator && isSecureContext) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
