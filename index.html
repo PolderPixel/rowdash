@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>RowDash</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #141a22;
+    --line: #232c38;
+    --text: #e8edf3;
+    --muted: #8593a3;
+    --accent: #4fc3f7;
+    --ok: #66d19e;
+    --warn: #f0b35a;
+    --err: #ef6f6f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { display: flex; flex-direction: column;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 12px); gap: 12px; }
+
+  header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .02em; }
+  .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; margin-right: auto; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.busy { background: var(--warn); } .dot.err { background: var(--err); }
+  button { font: inherit; font-size: 15px; font-weight: 600; border: 0; border-radius: 10px;
+    padding: 10px 16px; background: var(--accent); color: #04121b; cursor: pointer; }
+  button.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; }
+
+  main { flex: 1; display: grid; gap: 10px;
+    grid-template-columns: 1fr 1fr; grid-template-rows: 1.6fr 1fr 1fr 1fr; min-height: 0; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 10px 14px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+  .tile .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  .tile .value { font-variant-numeric: tabular-nums; font-weight: 700; line-height: 1.05;
+    font-size: clamp(30px, 10vw, 64px); white-space: nowrap; }
+  .tile .unit { color: var(--muted); font-size: 14px; }
+  .tile.hero { grid-column: 1 / -1; }
+  .tile.hero .value { font-size: clamp(64px, 24vw, 160px); color: var(--accent); }
+  .tile.hero .sub { color: var(--muted); font-size: 15px; }
+
+  @media (orientation: landscape) and (min-width: 700px) {
+    main { grid-template-columns: 2fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
+    .tile.hero { grid-column: 1; grid-row: 1 / -1; }
+  }
+
+  .hint { color: var(--muted); font-size: 13px; text-align: center; }
+  .hint.err { color: var(--err); }
+</style>
+</head>
+<body>
+<header>
+  <h1>RowDash</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">Niet verbonden</span></div>
+  <button id="connectBtn">Verbind PM5</button>
+  <button id="demoBtn" class="secondary">Demo</button>
+</header>
+
+<main>
+  <div class="tile hero">
+    <div class="label">Split /500m</div>
+    <div class="value" id="pace">–:––</div>
+    <div class="sub">gem. <span id="avgPace">–:––</span></div>
+  </div>
+  <div class="tile"><div class="label">Slagen/min</div><div class="value" id="spm">–</div></div>
+  <div class="tile"><div class="label">Watt</div><div class="value" id="watts">–</div></div>
+  <div class="tile"><div class="label">Afstand</div><div class="value" id="dist">–</div><div class="unit">meter</div></div>
+  <div class="tile"><div class="label">Tijd</div><div class="value" id="time">–:––</div></div>
+  <div class="tile"><div class="label">Calorieën</div><div class="value" id="cal">–</div></div>
+  <div class="tile"><div class="label">Hartslag</div><div class="value" id="hr">–</div><div class="unit">bpm</div></div>
+</main>
+
+<div class="hint" id="hint">Zet de PM5 aan, open op de PM5 het menu <b>Connect</b>, en tik hierboven op “Verbind PM5”.</div>
+
+<script>
+// Concept2 PM5 Bluetooth Smart Communication Interface.
+// Every UUID is CE06xxxx-43E5-11E4-916C-0800200C9A66.
+const pm5 = id => `ce06${id}-43e5-11e4-916c-0800200c9a66`;
+const UUID = {
+  info:         pm5('0010'),
+  control:      pm5('0020'),
+  rowing:       pm5('0030'),
+  generalStatus: pm5('0031'),
+  addStatus1:   pm5('0032'),
+  addStatus2:   pm5('0033'),
+  sampleRate:   pm5('0034'),
+  strokeData2:  pm5('0036'),
+};
+
+const $ = id => document.getElementById(id);
+const ui = {
+  dot: $('dot'), statusText: $('statusText'), hint: $('hint'),
+  connectBtn: $('connectBtn'), demoBtn: $('demoBtn'),
+  pace: $('pace'), avgPace: $('avgPace'), spm: $('spm'), watts: $('watts'),
+  dist: $('dist'), time: $('time'), cal: $('cal'), hr: $('hr'),
+};
+
+// Little-endian unsigned integers of 1–3 bytes.
+const u8  = (v, o) => v.getUint8(o);
+const u16 = (v, o) => v.getUint16(o, true);
+const u24 = (v, o) => v.getUint8(o) | (v.getUint8(o + 1) << 8) | (v.getUint8(o + 2) << 16);
+
+function fmtTime(seconds) {
+  if (!isFinite(seconds) || seconds <= 0) return '–:––';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+           : `${m}:${String(s).padStart(2, '0')}`;
+}
+function fmtPace(seconds) {
+  if (!isFinite(seconds) || seconds <= 0 || seconds > 600) return '–:––';
+  const m = Math.floor(seconds / 60);
+  const s = (seconds % 60).toFixed(1).padStart(4, '0');
+  return `${m}:${s}`;
+}
+
+function setStatus(text, state) {
+  ui.statusText.textContent = text;
+  ui.dot.className = 'dot' + (state ? ' ' + state : '');
+}
+function setHint(text, isError = false) {
+  ui.hint.innerHTML = text;
+  ui.hint.classList.toggle('err', isError);
+}
+
+function render(d) {
+  if (d.elapsed !== undefined) ui.time.textContent = fmtTime(d.elapsed);
+  if (d.distance !== undefined) ui.dist.textContent = Math.floor(d.distance).toLocaleString('nl-NL');
+  if (d.pace !== undefined) ui.pace.textContent = fmtPace(d.pace);
+  if (d.avgPace !== undefined) ui.avgPace.textContent = fmtPace(d.avgPace);
+  if (d.spm !== undefined) ui.spm.textContent = d.spm || '–';
+  if (d.watts !== undefined) ui.watts.textContent = d.watts || '–';
+  if (d.calories !== undefined) ui.cal.textContent = d.calories;
+  if (d.hr !== undefined) ui.hr.textContent = d.hr && d.hr !== 255 ? d.hr : '–';
+}
+
+// --- Parsers for the rowing service characteristics ---
+
+// 0x0031 General status
+function parseGeneralStatus(v) {
+  return { elapsed: u24(v, 0) / 100, distance: u24(v, 3) / 10 };
+}
+// 0x0032 Additional status 1
+function parseAddStatus1(v) {
+  return {
+    elapsed: u24(v, 0) / 100,
+    spm: u8(v, 5),
+    hr: u8(v, 6),
+    pace: u16(v, 7) / 100,
+    avgPace: u16(v, 9) / 100,
+  };
+}
+// 0x0033 Additional status 2
+function parseAddStatus2(v) {
+  return { calories: u16(v, 6) };
+}
+// 0x0036 Additional stroke data
+function parseStrokeData2(v) {
+  return { watts: u16(v, 3) };
+}
+
+// --- Bluetooth connection ---
+
+let device = null;
+let wakeLock = null;
+
+async function keepScreenOn() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch { /* not critical */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && (device?.gatt?.connected || demoTimer)) keepScreenOn();
+});
+
+async function subscribe(service, uuid, parser) {
+  const ch = await service.getCharacteristic(uuid);
+  ch.addEventListener('characteristicvaluechanged', e => render(parser(e.target.value)));
+  await ch.startNotifications();
+}
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    setHint('Deze browser ondersteunt geen Web Bluetooth. Gebruik Chrome op Android, en open de pagina via <b>https://</b>.', true);
+    return;
+  }
+  stopDemo();
+  ui.connectBtn.disabled = true;
+  setStatus('Zoeken…', 'busy');
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'PM5' }, { services: [UUID.info] }],
+      optionalServices: [UUID.info, UUID.control, UUID.rowing],
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    setStatus('Verbinden…', 'busy');
+    const server = await device.gatt.connect();
+    const rowing = await server.getPrimaryService(UUID.rowing);
+
+    // Ask for updates every 250 ms (0=1s, 1=500ms, 2=250ms, 3=100ms).
+    try {
+      const rate = await rowing.getCharacteristic(UUID.sampleRate);
+      await rate.writeValue(new Uint8Array([2]));
+    } catch { /* default rate is fine too */ }
+
+    await subscribe(rowing, UUID.generalStatus, parseGeneralStatus);
+    await subscribe(rowing, UUID.addStatus1, parseAddStatus1);
+    await subscribe(rowing, UUID.addStatus2, parseAddStatus2);
+    await subscribe(rowing, UUID.strokeData2, parseStrokeData2);
+
+    setStatus(`Verbonden met ${device.name || 'PM5'}`, 'ok');
+    setHint('Begin met roeien – de waarden verschijnen vanzelf.');
+    ui.connectBtn.textContent = 'Verbreek';
+    keepScreenOn();
+  } catch (err) {
+    if (err.name === 'NotFoundError') {
+      setStatus('Niet verbonden');
+      setHint('Geen PM5 gekozen. Staat de PM5 in het menu <b>Connect</b>?');
+    } else {
+      setStatus('Fout', 'err');
+      setHint(`Verbinden mislukt: ${err.message}`, true);
+    }
+    device = null;
+  } finally {
+    ui.connectBtn.disabled = false;
+  }
+}
+
+function onDisconnected() {
+  setStatus('Verbinding verbroken', 'err');
+  setHint('De verbinding met de PM5 is weggevallen. Tik op “Verbind PM5” om opnieuw te verbinden.');
+  ui.connectBtn.textContent = 'Verbind PM5';
+  wakeLock?.release().catch(() => {});
+  device = null;
+}
+
+ui.connectBtn.addEventListener('click', () => {
+  if (device?.gatt?.connected) {
+    device.gatt.disconnect();
+  } else {
+    connect();
+  }
+});
+
+// --- Demo mode: simulated rowing, to test the dashboard without the erg ---
+
+let demoTimer = null;
+function startDemo() {
+  const start = performance.now();
+  let distance = 0, last = start, calories = 0;
+  setStatus('Demo', 'ok');
+  setHint('Demomodus: gesimuleerde data. Tik op “Stop demo” om te stoppen.');
+  ui.demoBtn.textContent = 'Stop demo';
+  keepScreenOn();
+  demoTimer = setInterval(() => {
+    const now = performance.now();
+    const t = (now - start) / 1000;
+    const pace = 118 + 6 * Math.sin(t / 20) + (Math.random() - .5) * 2; // ~1:58 /500m
+    const speed = 500 / pace;
+    distance += speed * (now - last) / 1000;
+    last = now;
+    const watts = Math.round(2.8 * speed ** 3);
+    calories = Math.round(t * (watts * 4 + 300) / 3600 / 1.1);
+    render({
+      elapsed: t, distance, pace, avgPace: t > 0 ? t * 500 / distance : 0,
+      spm: Math.round(24 + 2 * Math.sin(t / 15)), watts, calories,
+      hr: Math.round(140 + 12 * Math.sin(t / 40)),
+    });
+  }, 250);
+}
+function stopDemo() {
+  if (!demoTimer) return;
+  clearInterval(demoTimer);
+  demoTimer = null;
+  ui.demoBtn.textContent = 'Demo';
+  setStatus('Niet verbonden');
+  wakeLock?.release().catch(() => {});
+}
+ui.demoBtn.addEventListener('click', () => demoTimer ? stopDemo() : startDemo());
+</script>
+</body>
+</html>
