@@ -30,7 +30,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const req = event.request;
   const url = new URL(req.url);
-  if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  // The Logbook API and its login redirects always go straight to the network.
+  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
   // All pages are the one app page.
   const key = req.mode === 'navigate' ? '/' : url.pathname;

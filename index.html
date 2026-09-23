@@ -55,7 +55,7 @@
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
     padding: 8px 14px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .tile .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
   /* The value box fills whatever space the tile has left; the number scales to fit that box. */
   .tile .value { flex: 1; min-height: 0; container-type: size; display: flex; align-items: center; }
   .tile .value span { font-variant-numeric: tabular-nums; font-weight: 700; line-height: 1;
@@ -120,6 +120,55 @@
   .hint { color: var(--muted); font-size: 13px; text-align: center; }
   .hint.err { color: var(--err); }
   .hint:empty { display: none; }
+  [hidden] { display: none !important; }
+
+  /* --- View 5: history from the Concept2 Logbook --- */
+  .v-hist { display: flex; flex-direction: column; position: relative; }
+  .hist-connect { flex: 1; justify-content: center; align-items: flex-start; gap: 12px; padding: 20px; }
+  .hist-connect p { margin: 0; color: var(--muted); line-height: 1.4; }
+  .hist-main { flex: 1; min-height: 0; display: grid; gap: 10px;
+    grid-template-columns: repeat(3, 1fr); grid-template-rows: 0.45fr 1fr 2.2fr; }
+  .hist-main .span { grid-column: 1 / -1; }
+  .label-row { display: flex; align-items: center; gap: 8px; }
+  .label-row .label { margin-right: auto; }
+  .link { background: none; border: 0; padding: 2px 4px; color: var(--accent); font-size: 13px; font-weight: 500; }
+  .hist-list { flex: 1; min-height: 0; overflow-y: auto; margin: 4px -14px -8px; padding: 0 14px 8px;
+    overscroll-behavior: contain; }
+  .h-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; width: 100%; text-align: left;
+    background: none; color: var(--text); border: 0; border-top: 1px solid var(--line); border-radius: 0;
+    padding: 10px 0; font-weight: 400; }
+  .h-item:first-child { border-top: 0; }
+  .h-date { color: var(--muted); font-size: 12px; }
+  .h-dist { font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .h-time { font-weight: 700; font-size: 17px; text-align: right; font-variant-numeric: tabular-nums; }
+  .h-sub { color: var(--muted); font-size: 13px; grid-column: 1 / -1; font-variant-numeric: tabular-nums; }
+  .h-type { font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; text-align: right; }
+  .h-empty { color: var(--muted); padding: 16px 0; text-align: center; }
+
+  .hist-detail { position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; gap: 10px; }
+  .d-head { display: flex; align-items: center; gap: 10px; }
+  .d-head button { white-space: nowrap; padding: 8px 12px; }
+  .d-head h2 { font-size: 17px; margin: 0; white-space: nowrap; }
+  .d-head .h-date { text-align: right; }
+  .d-head .h-date { margin-left: auto; }
+  .d-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; min-height: 64px; }
+  .d-chart { flex: 1.2; min-height: 120px; }
+  .d-splits { flex: 1; min-height: 0; }
+  #dSplits { flex: 1; min-height: 0; overflow: auto; margin: 4px -14px -8px; padding: 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-align: right; padding: 4px 6px; position: sticky; top: 0; background: var(--panel); }
+  td { text-align: right; padding: 6px; border-top: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  @media (orientation: landscape) {
+    .hist-main { grid-template-columns: 1fr 1fr 1fr 2.4fr; grid-template-rows: 0.7fr 1.5fr; }
+    .hist-main .span { grid-column: 1 / 4; }
+    .hist-main .list-tile { grid-column: 4; grid-row: 1 / -1; }
+    .hist-detail { display: grid; gap: 8px; grid-template-columns: 1.3fr 1fr; grid-template-rows: auto 52px 1fr; }
+    .d-head, .d-stats { grid-column: 1 / -1; }
+    .d-stats { min-height: 0; }
+    .d-chart { grid-column: 1; min-height: 0; }
+    .d-splits { grid-column: 2; }
+  }
 </style>
 </head>
 <body>
@@ -132,7 +181,7 @@
 
 <div class="views" id="views">
   <!-- 1. Dashboard -->
-  <section class="view v-dash" data-name="Dashboard">
+  <section class="view v-dash" data-name="Live">
     <div class="tile hero">
       <div class="label">Split /500m</div>
       <div class="value"><span id="pace">–:––</span></div>
@@ -164,7 +213,7 @@
   </section>
 
   <!-- 3. Force curve -->
-  <section class="view v-force" data-name="Krachtcurve">
+  <section class="view v-force" data-name="Kracht">
     <div class="tile wide">
       <div class="label">Krachtcurve – laatste 8 halen</div>
       <div class="legend"><span><i style="background:var(--accent)"></i>laatste haal</span><span><i style="background:#4fc3f755"></i>eerdere halen</span></div>
@@ -193,6 +242,57 @@
     <div class="tile mini"><div class="label">Haallengte (m)</div><div class="value"><span id="rLen">–</span></div></div>
     <div class="tile mini"><div class="label">Haaltijd (s)</div><div class="value"><span id="rDrive">–</span></div></div>
     <div class="tile mini"><div class="label">Terugweg (s)</div><div class="value"><span id="rRec">–</span></div></div>
+  </section>
+
+  <!-- 5. History from the Concept2 Logbook -->
+  <section class="view v-hist" data-name="Historie">
+    <div class="tile hist-connect" id="hConnect" hidden>
+      <div class="label">Concept2 Logbook</div>
+      <p>Koppel je Logbook om al je trainingen hier te zien – ook die je met ErgData of zonder app hebt geroeid.</p>
+      <button id="hConnectBtn">Koppel Logbook</button>
+      <p class="hint err" id="hError"></p>
+    </div>
+
+    <div class="hist-main" id="hMain" hidden>
+      <div class="tile mini"><div class="label">Week (m)</div><div class="value"><span id="hWeek">–</span></div></div>
+      <div class="tile mini"><div class="label">Maand (m)</div><div class="value"><span id="hMonth">–</span></div></div>
+      <div class="tile mini"><div class="label">Sessies (mnd)</div><div class="value"><span id="hCount">–</span></div></div>
+      <div class="tile span">
+        <div class="label">Meters per week – laatste 12 weken</div>
+        <div class="chart"><canvas id="weeksChart"></canvas></div>
+      </div>
+      <div class="tile span list-tile">
+        <div class="label-row">
+          <div class="label">Trainingen</div>
+          <button class="link" id="hRefresh">Vernieuw</button>
+          <button class="link" id="hLogout">Ontkoppel</button>
+        </div>
+        <div class="hist-list" id="hList"></div>
+      </div>
+    </div>
+
+    <div class="hist-detail" id="hDetail" hidden>
+      <div class="d-head">
+        <button class="secondary" id="dBack">‹ Terug</button>
+        <h2 id="dTitle"></h2>
+        <span class="h-date" id="dDate"></span>
+      </div>
+      <div class="d-stats">
+        <div class="tile mini"><div class="label">Tijd</div><div class="value"><span id="dTime">–</span></div></div>
+        <div class="tile mini"><div class="label">Split</div><div class="value"><span id="dPace">–</span></div></div>
+        <div class="tile mini"><div class="label">S/min</div><div class="value"><span id="dSpm">–</span></div></div>
+        <div class="tile mini"><div class="label">Hart</div><div class="value"><span id="dHr">–</span></div></div>
+      </div>
+      <div class="tile d-chart">
+        <div class="label">Split &amp; slagfrequentie</div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>split</span><span><i style="background:var(--accent2)"></i>slagen/min</span></div>
+        <div class="chart"><canvas id="dChart"></canvas></div>
+      </div>
+      <div class="tile d-splits">
+        <div class="label">Splits</div>
+        <div id="dSplits"></div>
+      </div>
+    </div>
   </section>
 </div>
 
@@ -608,6 +708,229 @@ function drawRhythm() {
 new ResizeObserver(scheduleDraw).observe($('views'));
 
 // ---------------------------------------------------------------------------
+// History: workouts from the Concept2 Logbook, via our own /api/c2 proxy
+// ---------------------------------------------------------------------------
+
+const TYPE_NAMES = { rower: 'RowErg', skierg: 'SkiErg', bike: 'BikeErg', dynamic: 'Dynamic', slides: 'Slides',
+  paddle: 'Paddle', water: 'Water', snow: 'Snow', rollerski: 'Rollerski', multierg: 'MultiErg' };
+const hist = { loaded: false, loading: false, results: [], open: null };
+
+async function c2api(path, params = {}) {
+  let res;
+  try {
+    res = await fetch('/api/c2/proxy?' + new URLSearchParams({ path, ...params }), { credentials: 'same-origin' });
+  } catch {
+    throw new Error('Kon het Logbook niet bereiken. Ben je offline, of moet je opnieuw inloggen bij Vercel?');
+  }
+  if (res.status === 401) throw Object.assign(new Error('not_connected'), { notConnected: true });
+  if (!res.ok) throw new Error(`Het Logbook gaf een fout (${res.status}).`);
+  return res.json();
+}
+
+const resultDate = r => new Date(String(r.date).replace(' ', 'T'));
+// Logbook times are in tenths of a second.
+const fmtTenths = t => {
+  const s = t / 10;
+  return fmtTime(s) + (s < 3600 ? '.' + Math.floor(t % 10) : '');
+};
+const paceOf = r => (r.distance ? (r.time / 10) / r.distance * (r.type === 'bike' ? 1000 : 500) : 0);
+const paceUnit = r => (r.type === 'bike' ? '/1000m' : '/500m');
+const fmtDate = (d, opts) => d.toLocaleDateString('nl-NL', opts);
+const meters = m => Math.round(m).toLocaleString('nl-NL');
+
+function showConnect(error = '') {
+  $('hConnect').hidden = false;
+  $('hMain').hidden = true;
+  $('hDetail').hidden = true;
+  $('hError').textContent = error;
+}
+
+async function loadHistory(force = false) {
+  if (hist.loading || (hist.loaded && !force)) return;
+  hist.loading = true;
+  $('hConnect').hidden = true;
+  $('hMain').hidden = false;
+  $('hList').innerHTML = '<div class="h-empty">Trainingen laden…</div>';
+  try {
+    const r = await c2api('users/me/results', { number: 250 });
+    hist.results = (r.data || []).sort((a, b) => resultDate(b) - resultDate(a));
+    hist.loaded = true;
+    renderHistory();
+  } catch (err) {
+    if (err.notConnected) showConnect();
+    else $('hList').innerHTML = `<div class="h-empty">${err.message}</div>`;
+  } finally {
+    hist.loading = false;
+  }
+}
+
+function startOfWeek(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));   // Monday
+  return x;
+}
+
+function renderHistory() {
+  const R = hist.results;
+  const now = new Date();
+  const week = startOfWeek(now);
+  const month = new Date(now.getFullYear(), now.getMonth(), 1);
+  const inMonth = R.filter(r => resultDate(r) >= month);
+  setText('hWeek', meters(R.filter(r => resultDate(r) >= week).reduce((s, r) => s + (r.distance || 0), 0)));
+  setText('hMonth', meters(inMonth.reduce((s, r) => s + (r.distance || 0), 0)));
+  setText('hCount', inMonth.length);
+
+  const list = $('hList');
+  list.innerHTML = '';
+  if (!R.length) list.innerHTML = '<div class="h-empty">Nog geen trainingen in je Logbook.</div>';
+  R.forEach(r => {
+    const d = resultDate(r);
+    const b = document.createElement('button');
+    b.className = 'h-item';
+    const extra = [
+      `${fmtPace(paceOf(r))} ${paceUnit(r)}`,
+      r.stroke_rate ? `${r.stroke_rate} s/m` : '',
+      r.heart_rate?.average ? `${r.heart_rate.average} bpm` : '',
+    ].filter(Boolean).join(' · ');
+    b.innerHTML = `
+      <div class="h-date">${fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })} · ${d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</div>
+      <div class="h-type">${TYPE_NAMES[r.type] || r.type || ''}</div>
+      <div class="h-dist">${meters(r.distance || 0)} m</div>
+      <div class="h-time">${fmtTenths(r.time || 0)}</div>
+      <div class="h-sub">${extra}</div>`;
+    b.addEventListener('click', () => openResult(r));
+    list.appendChild(b);
+  });
+  drawWeeks();
+}
+
+function drawWeeks() {
+  const canvas = $('weeksChart');
+  if (!canvas.isConnected || $('hMain').hidden) return;
+  const { ctx, w, h } = prep(canvas);
+  const weeks = [];
+  const thisWeek = startOfWeek(new Date());
+  for (let i = 11; i >= 0; i--) {
+    const start = new Date(thisWeek); start.setDate(start.getDate() - 7 * i);
+    const end = new Date(start); end.setDate(end.getDate() + 7);
+    const m = hist.results.filter(r => { const d = resultDate(r); return d >= start && d < end; })
+      .reduce((s, r) => s + (r.distance || 0), 0);
+    weeks.push({ start, m });
+  }
+  const pad = { l: 40, r: 6, t: 14, b: 18 };
+  const max = Math.max(1000, ...weeks.map(k => k.m)) * 1.1;
+  const y = v => h - pad.b - v / max * (h - pad.t - pad.b);
+  const slot = (w - pad.l - pad.r) / weeks.length;
+
+  ctx.strokeStyle = C.grid; ctx.fillStyle = C.muted; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 3; i++) {
+    const v = max * i / 3;
+    ctx.beginPath(); ctx.moveTo(pad.l, y(v)); ctx.lineTo(w - pad.r, y(v)); ctx.stroke();
+    ctx.fillText(v >= 1000 ? Math.round(v / 1000) + 'k' : Math.round(v), pad.l - 6, y(v));
+  }
+  weeks.forEach((k, i) => {
+    const bx = pad.l + i * slot + slot * 0.15, bw = slot * 0.7;
+    const last = i === weeks.length - 1;
+    ctx.fillStyle = last ? C.accent : '#4fc3f780';
+    if (k.m) ctx.fillRect(bx, y(k.m), bw, h - pad.b - y(k.m));
+    ctx.fillStyle = C.muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    if ((weeks.length - 1 - i) % 2 === 0) ctx.fillText(last ? 'nu' : fmtDate(k.start, { day: 'numeric', month: 'short' }).replace('.', ''), bx + bw / 2, h - pad.b + 4);
+    if (last && k.m) { ctx.textBaseline = 'bottom'; ctx.fillStyle = C.text; ctx.fillText(meters(k.m), bx + bw / 2, y(k.m) - 2); }
+  });
+}
+
+async function openResult(r) {
+  hist.open = { result: r, strokes: null };
+  const d = resultDate(r);
+  $('hDetail').hidden = false;
+  setText('dTitle', `${meters(r.distance || 0)} m`);
+  setText('dDate', `${TYPE_NAMES[r.type] || ''} · ${fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' })}`);
+  setText('dTime', fmtTenths(r.time || 0));
+  setText('dPace', fmtPace(paceOf(r)));
+  setText('dSpm', r.stroke_rate || '–');
+  setText('dHr', r.heart_rate?.average || '–');
+  $('dSplits').innerHTML = '<div class="h-empty">Laden…</div>';
+  drawDetail();
+
+  try {
+    const [full, strokes] = await Promise.all([
+      c2api(`users/me/results/${r.id}`).then(x => x.data || x),
+      c2api(`users/me/results/${r.id}/strokes`).then(x => x.data || []).catch(() => []),
+    ]);
+    if (hist.open?.result !== r) return;   // user already went back or opened another
+    hist.open.strokes = strokes;
+    renderSplits(full);
+    drawDetail();
+  } catch (err) {
+    $('dSplits').innerHTML = `<div class="h-empty">${err.message}</div>`;
+  }
+}
+
+function renderSplits(r) {
+  const parts = r.workout?.intervals?.length ? r.workout.intervals : (r.workout?.splits || []);
+  if (!parts.length) { $('dSplits').innerHTML = '<div class="h-empty">Geen splits voor deze training.</div>'; return; }
+  const isIntervals = !!r.workout?.intervals?.length;
+  const unit = r.type === 'bike' ? 1000 : 500;
+  const rows = parts.map((p, i) => {
+    const pace = p.distance ? (p.time / 10) / p.distance * unit : 0;
+    return `<tr><td>${i + 1}</td><td>${meters(p.distance || 0)}</td><td>${fmtTenths(p.time || 0)}</td>
+      <td>${fmtPace(pace)}</td><td>${p.stroke_rate || '–'}</td><td>${p.heart_rate?.average || p.heart_rate?.ending || '–'}</td></tr>`;
+  }).join('');
+  $('dSplits').innerHTML = `<table><thead><tr><th>${isIntervals ? 'Interval' : 'Split'}</th><th>m</th><th>Tijd</th>
+    <th>${paceUnit(r)}</th><th>s/m</th><th>bpm</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function drawDetail() {
+  if (!hist.open || $('hDetail').hidden) return;
+  const { ctx, w, h } = prep($('dChart'));
+  const S = (hist.open.strokes || []).filter(s => s.p > 0);
+  if (S.length < 2) return empty(ctx, w, h, hist.open.strokes ? 'Geen slagdata voor deze training' : 'Laden…');
+  // Stroke data: t = tenths of a second, p = tenths of a second per 500m.
+  const pts = S.map(s => ({ t: s.t / 10, pace: s.p / 10, spm: s.spm || 0 }));
+  const pad = { l: 42, r: 30, t: 6, b: 18 };
+  const tMax = pts[pts.length - 1].t;
+  const paces = pts.map(p => p.pace).sort((a, b) => a - b);
+  // Ignore the slowest few percent (start, rests) so the scale shows the actual rowing.
+  const [lo, hi] = niceRange(paces[0], paces[Math.floor(paces.length * 0.97)], 8);
+  const sMax = Math.max(30, ...pts.map(p => p.spm)) * 1.15;
+  const x = t => pad.l + t / tMax * (w - pad.l - pad.r);
+  const yP = p => pad.t + (Math.min(p, hi) - lo) / (hi - lo) * (h - pad.t - pad.b);
+  const yS = v => h - pad.b - v / sMax * (h - pad.t - pad.b);
+
+  ctx.strokeStyle = C.grid; ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 3; i++) {
+    const p = lo + (hi - lo) * i / 3, yy = yP(p);
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke();
+    ctx.fillStyle = C.accent; ctx.textAlign = 'right'; ctx.fillText(fmtPace(p, 0), pad.l - 6, yy);
+    ctx.fillStyle = C.accent2; ctx.textAlign = 'left'; ctx.fillText(Math.round(sMax * (1 - i / 3)), w - pad.r + 6, pad.t + (h - pad.t - pad.b) * i / 3);
+  }
+  ctx.fillStyle = C.muted; ctx.textBaseline = 'top';
+  const step = tMax > 1800 ? 600 : tMax > 600 ? 300 : 60;
+  for (let t = 0; t <= tMax; t += step) {
+    const px = x(t);
+    ctx.textAlign = px < pad.l + 16 ? 'left' : px > w - pad.r - 16 ? 'right' : 'center';
+    ctx.fillText(t ? fmtTime(t) : '0:00', px, h - pad.b + 4);
+  }
+  const line = (key, y, color) => {
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(x(p.t), y(p[key])) : ctx.moveTo(x(p.t), y(p[key])));
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
+  };
+  line('spm', yS, C.accent2);
+  line('pace', yP, C.accent);
+}
+
+$('hConnectBtn').addEventListener('click', () => { location.href = '/api/c2/login'; });
+$('hRefresh').addEventListener('click', () => loadHistory(true));
+$('hLogout').addEventListener('click', async () => {
+  await fetch('/api/c2/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+  hist.loaded = false; hist.results = [];
+  showConnect();
+});
+$('dBack').addEventListener('click', () => { hist.open = null; $('hDetail').hidden = true; });
+new ResizeObserver(() => { drawWeeks(); drawDetail(); }).observe($('views'));
+
+// ---------------------------------------------------------------------------
 // Swipe between views
 // ---------------------------------------------------------------------------
 
@@ -630,6 +953,7 @@ function showView(i, smooth = true) {
 function markTab() {
   const i = currentView();
   tabs.forEach((b, j) => b.classList.toggle('active', i === j));
+  if (views[i]?.dataset.name === 'Historie') loadHistory();
   try { localStorage.setItem('rowdash.view', i); } catch {}
 }
 viewsEl.addEventListener('scroll', markTab, { passive: true });
@@ -642,6 +966,13 @@ let viewBeforeResize = 0;
 new ResizeObserver(() => showView(viewBeforeResize, false)).observe(viewsEl);
 viewsEl.addEventListener('scrollend', () => { viewBeforeResize = currentView(); });
 try { viewBeforeResize = +localStorage.getItem('rowdash.view') || 0; } catch {}
+// Coming back from the Concept2 login: open the history view.
+if (location.hash.startsWith('#historie') || location.hash.startsWith('#c2error')) {
+  const err = location.hash.startsWith('#c2error=') ? decodeURIComponent(location.hash.slice(9)) : '';
+  viewBeforeResize = views.findIndex(v => v.dataset.name === 'Historie');
+  history.replaceState(null, '', location.pathname);
+  if (err) showConnect(err);
+}
 showView(viewBeforeResize, false);
 markTab();
 
