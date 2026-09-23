@@ -920,7 +920,23 @@ function drawDetail() {
   line('pace', yP, C.accent);
 }
 
-$('hConnectBtn').addEventListener('click', () => { location.href = '/api/c2/login'; });
+// The login runs in its own window: navigating this page away would drop the PM5 Bluetooth connection.
+$('hConnectBtn').addEventListener('click', () => {
+  $('hError').textContent = '';
+  const win = window.open('/api/c2/login?popup=1', 'c2login');
+  if (!win) $('hError').textContent = 'Het loginvenster werd geblokkeerd. Sta pop-ups toe voor RowDash en probeer het opnieuw.';
+});
+function onLoginResult(msg) {
+  if (!msg || typeof msg.ok !== 'boolean') return;
+  if (msg.ok) { hist.loaded = false; loadHistory(true); } else showConnect(msg.message);
+}
+try { new BroadcastChannel('rowdash-c2').onmessage = e => onLoginResult(e.data); } catch {}
+window.addEventListener('message', e => { if (e.origin === location.origin) onLoginResult(e.data); });
+// Fallback when neither message arrives (e.g. the login ran in a separate browser tab):
+// check again when the user returns to the app.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !$('hConnect').hidden && !$('hError').textContent) loadHistory(true);
+});
 $('hRefresh').addEventListener('click', () => loadHistory(true));
 $('hLogout').addEventListener('click', async () => {
   await fetch('/api/c2/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});

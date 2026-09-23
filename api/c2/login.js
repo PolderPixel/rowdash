@@ -1,12 +1,15 @@
 // Start the Concept2 Logbook OAuth flow.
+// With ?popup=1 the flow runs in its own window, so the app keeps its Bluetooth connection.
 import crypto from 'node:crypto';
-import { C2, SCOPE, cookie, redirect, redirectUri } from '../../lib/c2.js';
+import { C2, SCOPE, cookie, popupResult, redirect, redirectUri } from '../../lib/c2.js';
 
 export function GET(request) {
+  const popup = new URL(request.url).searchParams.get('popup') === '1';
   if (!process.env.C2_CLIENT_ID) {
-    return redirect('/#c2error=' + encodeURIComponent('De Concept2-koppeling is nog niet ingesteld (C2_CLIENT_ID ontbreekt).'));
+    const msg = 'De Concept2-koppeling is nog niet ingesteld (C2_CLIENT_ID ontbreekt).';
+    return popup ? popupResult(false, msg) : redirect('/#c2error=' + encodeURIComponent(msg));
   }
-  const state = crypto.randomBytes(16).toString('hex');
+  const state = crypto.randomBytes(16).toString('hex') + (popup ? '.p' : '');
   const url = new URL(`${C2}/oauth/authorize`);
   url.search = new URLSearchParams({
     client_id: process.env.C2_CLIENT_ID,
